@@ -1,0 +1,60 @@
+{$CLEO .cs}
+// ============================================================================
+//  DHF_TripBridge  -  Sanny Builder source (GTA SA mode, CLEO 4)
+//
+//  Compile with Sanny Builder (File > New > CLEO script, paste, Compile) and save the result as
+//      <GTA SA folder>\CLEO\DHF_TripBridge.cs
+//
+//  What it does: DynamicHitFeedback.asi cannot call the game's task constructors safely, so when a
+//  running ped is shot in the leg it leaves a request in a small shared "mailbox" (exported by the
+//  .asi as DHF_Mailbox). This script reads that mailbox and runs the game's OWN knock-down task,
+//  TASK_FALL_AND_GET_UP (opcode 05BB) - exactly what vanilla scripts use. That is the signal the
+//  Bullet Physics Ragdoll mod reacts to; after the ragdoll the game plays its normal get-up animation.
+//
+//  Mailbox layout (all 32-bit):  +0 pedPtr  +4 fallDown  +8 timeMs  +12 seq  +16 ack
+//
+//  If Sanny Builder rejects a line, look the opcode number up in its opcode search; the numbers are:
+//     0AA2 load dynamic library       0AA4 get dynamic library procedure address
+//     0A8D read_memory                0A8C write_memory
+//     0AEA ped pointer -> ped handle  (CLEO 4)
+//     05BB task_fall_and_get_up       (ped, fall_down, time_on_ground_ms)
+// ============================================================================
+0000: NOP
+03A4: name_thread "DHFTRIP"
+
+0AA2: 0@ = load_dynamic_library "DynamicHitFeedback.asi"
+00D6: if
+0039:   0@ == 0
+004D: jump_if_false @LIB_FOUND
+0A93: end_custom_thread
+
+:LIB_FOUND
+0AA4: 1@ = get_dynamic_library_procedure "DHF_Mailbox" library 0@
+00D6: if
+0039:   1@ == 0
+004D: jump_if_false @MAIN_LOOP
+0A93: end_custom_thread
+
+:MAIN_LOOP
+0001: wait 0
+0A8D: 2@ = read_memory 1@ size 4 virtual_protect 0          // pedPtr (0 = nothing to do)
+00D6: if
+0039:   2@ == 0
+004D: jump_if_false @HAVE_REQUEST
+0002: jump @MAIN_LOOP
+
+:HAVE_REQUEST
+3@ = 1@
+3@ += 4
+0A8D: 4@ = read_memory 3@ size 4 virtual_protect 0          // fallDown
+3@ += 4
+0A8D: 5@ = read_memory 3@ size 4 virtual_protect 0          // time on ground (ms)
+3@ += 4
+0A8D: 6@ = read_memory 3@ size 4 virtual_protect 0          // seq
+0A8C: write_memory 1@ size 4 value 0 virtual_protect 0      // request consumed
+0AEA: 7@ = actor_struct 2@ handle
+05BB: task_fall_and_get_up 7@ fall_down 4@ time_on_ground 5@
+3@ = 1@
+3@ += 16
+0A8C: write_memory 3@ size 4 value 6@ virtual_protect 0     // ack = seq
+0002: jump @MAIN_LOOP
