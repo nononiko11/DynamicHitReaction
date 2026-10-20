@@ -1,0 +1,50 @@
+name: Build DynamicHitFeedback
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # only needed for the tag -> release step
+
+jobs:
+  build-asi:
+    name: Build 32-bit .asi (MSVC)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (Win32)
+        run: cmake -S . -B build -A Win32
+
+      - name: Build (Release)
+        run: cmake --build build --config Release
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item build/Release/DynamicHitFeedback.asi dist/
+          Copy-Item DynamicHitFeedback.ini dist/
+          Copy-Item cleo/DHF_TripBridge.txt dist/
+          Copy-Item README.md dist/
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DynamicHitFeedback
+          path: dist/*
+
+      - name: Attach to GitHub release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
+  logic-tests:
+    name: Logic self-tests (synthetic ped, no game needed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash dev/run_selftest.sh
